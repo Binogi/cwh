@@ -3,6 +3,7 @@
 namespace Maxbanton\Cwh\Handler;
 
 use Aws\CloudWatchLogs\CloudWatchLogsClient;
+use Aws\CloudWatchLogs\Exception\CloudWatchLogsException;
 use Monolog\Formatter\LineFormatter;
 use Monolog\Handler\AbstractProcessingHandler;
 use Monolog\Logger;
@@ -259,7 +260,18 @@ class CloudWatch extends AbstractProcessingHandler
 
         $this->checkThrottle();
 
-        $response = $this->client->putLogEvents($data);
+        try {
+            $response = $this->client->putLogEvents($data);
+        } catch (CloudWatchLogsException $e) {
+            if (stripos($e->getMessage(), 'InvalidSequenceTokenException') &&
+                preg_match('/"expectedSequenceToken":"(\d+)"/i', $e->getMessage(), $matches)
+            ) {
+                $data['sequenceToken'] = $matches[1];
+                $response              = $this->client->putLogEvents($data);
+            } else {
+                throw $e;
+            }
+        }
 
         $this->sequenceToken = $response->get('nextSequenceToken');
     }
